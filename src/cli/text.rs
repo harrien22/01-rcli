@@ -17,7 +17,7 @@ pub enum TextSubCommand {
     Sign(TextSignOpts),
     #[command(about = "Verify a signature with a public/session key")]
     Verify(TextVerifyOpts),
-    #[command(about = "Generate a random blake3 key or ed25519 key pair")]
+    #[command(about = "Generate a random blake3 key, ed25519 or chacha20poly1305 key pair")]
     Generate(KeyGenerateOpts),
 }
 
@@ -55,6 +55,7 @@ pub struct KeyGenerateOpts {
 pub enum TextSignFormat {
     Blake3,
     Ed25519,
+    ChaCha20Poly1305,
 }
 
 fn parse_text_sign_format(format: &str) -> Result<TextSignFormat, anyhow::Error> {
@@ -68,6 +69,7 @@ impl FromStr for TextSignFormat {
         match s {
             "blake3" => Ok(Self::Blake3),
             "ed25519" => Ok(Self::Ed25519),
+            "chacha20poly1305" => Ok(Self::ChaCha20Poly1305),
             _ => Err(anyhow::anyhow!("Invalid format")),
         }
     }
@@ -78,6 +80,7 @@ impl From<TextSignFormat> for &'static str {
         match format {
             TextSignFormat::Blake3 => "blake3",
             TextSignFormat::Ed25519 => "ed25519",
+            TextSignFormat::ChaCha20Poly1305 => "chacha20poly1305",
         }
     }
 }

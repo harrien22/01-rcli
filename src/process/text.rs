@@ -1,5 +1,9 @@
 use crate::{process_genpass, TextSignFormat};
 use anyhow::{Ok, Result};
+use chacha20poly1305::{
+    aead::{generic_array::typenum::Unsigned, Aead, AeadCore, KeyInit},
+    ChaCha20Poly1305, Key, Nonce,
+};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use rand::rngs::OsRng;
 use std::{collections::HashMap, io::Read};
@@ -24,6 +28,41 @@ pub struct Ed25519Signer {
 
 pub struct Ed25519Verifier {
     key: VerifyingKey,
+}
+
+pub struct Chacha20poly1305 {
+    key: [u8; 32],
+}
+
+impl TextSigner for Chacha20poly1305 {
+    fn sign(&self, reader: &mut dyn Read) -> Result<Vec<u8>> {
+        let mut buf = vec![];
+        reader.read_to_end(&mut buf)?;
+        let key = Key::from_slice(&self.key);
+        let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng);
+        let cipher = ChaCha20Poly1305::new(key);
+        let mut ciphertext = cipher
+            .encrypt(&nonce, buf.as_ref())
+            .map_err(|e| anyhow::anyhow!(e))?;
+        ciphertext.splice(..0, nonce.iter().copied());
+        Ok(ciphertext)
+    }
+}
+
+impl TextVerifier for Chacha20poly1305 {
+    fn verify(&self, reader: &mut dyn Read, sig: &[u8]) -> Result<bool> {
+        type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
+        let mut buf = vec![];
+        reader.read_to_end(&mut buf)?;
+        let key = Key::from_slice(&self.key);
+        let (nonce, ciphertext) = buf.split_at(NonceSize::to_usize());
+        let cipher = ChaCha20Poly1305::new(key);
+        let nonce = Nonce::from_slice(nonce);
+        let plaintext = cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|e| anyhow::anyhow!(e))?;
+        Ok(plaintext == sig)
+    }
 }
 
 impl TextSigner for Blake3 {
@@ -117,6 +156,26 @@ impl Ed25519Verifier {
     }
 }
 
+impl Chacha20poly1305 {
+    pub fn try_new(key: impl AsRef<[u8]>) -> Result<Self> {
+        let key = key.as_ref();
+        // convert &[u8] to [u8; 32]
+        let key = (&key[..32]).try_into()?;
+        Ok(Self::new(key))
+    }
+
+    pub fn new(key: [u8; 32]) -> Self {
+        Self { key }
+    }
+
+    fn generate() -> Result<HashMap<&'static str, Vec<u8>>> {
+        let key = process_genpass(32, true, true, true, true)?;
+        let mut map = HashMap::new();
+        map.insert("chacha20poly1305.txt", key.as_bytes().to_vec());
+        Ok(map)
+    }
+}
+
 pub fn process_text_sign(
     reader: &mut dyn Read,
     key: &[u8],
@@ -125,6 +184,7 @@ pub fn process_text_sign(
     let signer: Box<dyn TextSigner> = match format {
         TextSignFormat::Blake3 => Box::new(Blake3::try_new(key)?),
         TextSignFormat::Ed25519 => Box::new(Ed25519Signer::try_new(key)?),
+        TextSignFormat::ChaCha20Poly1305 => Box::new(Chacha20poly1305::try_new(key)?),
     };
 
     signer.sign(reader)
@@ -139,6 +199,7 @@ pub fn process_text_verify(
     let verifier: Box<dyn TextVerifier> = match format {
         TextSignFormat::Blake3 => Box::new(Blake3::try_new(key)?),
         TextSignFormat::Ed25519 => Box::new(Ed25519Verifier::try_new(key)?),
+        TextSignFormat::ChaCha20Poly1305 => Box::new(Chacha20poly1305::try_new(key)?),
     };
     verifier.verify(reader, sig)
 }
@@ -147,6 +208,7 @@ pub fn process_text_key_generate(format: TextSignFormat) -> Result<HashMap<&'sta
     match format {
         TextSignFormat::Blake3 => Blake3::generate(),
         TextSignFormat::Ed25519 => Ed25519Signer::generate(),
+        TextSignFormat::ChaCha20Poly1305 => Chacha20poly1305::generate(),
     }
 }
 
@@ -154,6 +216,7 @@ pub fn process_text_key_generate(format: TextSignFormat) -> Result<HashMap<&'sta
 mod tests {
     use super::*;
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    use std::io::Cursor;
 
     const KEY: &[u8] = include_bytes!("../../fixtures/blake3.txt");
 
@@ -175,6 +238,17 @@ mod tests {
         let sig = "33Ypo4rveYpWmJKAiGnnse-wHQhMVujjmcVkV4Tl43k";
         let sig = URL_SAFE_NO_PAD.decode(sig)?;
         let ret = process_text_verify(&mut reader, KEY, &sig, format)?;
+        assert!(ret);
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_text_chacha20poly1305() -> Result<()> {
+        let mut reader = "hello world!".as_bytes();
+        let reader1 = "hello world!".as_bytes();
+        let format = TextSignFormat::ChaCha20Poly1305;
+        let sig = process_text_sign(&mut reader, KEY, format)?;
+        let ret = process_text_verify(&mut Cursor::new(sig), KEY, reader1, format)?;
         assert!(ret);
         Ok(())
     }
