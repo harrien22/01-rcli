@@ -110,6 +110,7 @@ async fn file_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::to_bytes;
 
     #[tokio::test]
     async fn test_file_handler() {
@@ -120,6 +121,8 @@ mod tests {
             .await
             .into_response();
         assert_eq!(response.status(), StatusCode::OK);
-        // assert!(response.body().trim().starts_with("[package]"));
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.trim().starts_with("[package]"));
     }
 }
