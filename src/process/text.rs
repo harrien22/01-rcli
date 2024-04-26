@@ -1,5 +1,5 @@
 use crate::{process_genpass, TextSignFormat};
-use anyhow::{Ok, Result};
+use anyhow::{anyhow, Ok, Result};
 use chacha20poly1305::{
     aead::{generic_array::typenum::Unsigned, Aead, AeadCore, KeyInit},
     ChaCha20Poly1305, Key, Nonce,
@@ -51,7 +51,7 @@ impl TextEncryptor for Chacha20poly1305 {
         let cipher = ChaCha20Poly1305::new(key);
         let mut ciphertext = cipher
             .encrypt(&nonce, buf.as_ref())
-            .map_err(|e| anyhow::anyhow!(e))?;
+            .map_err(|e| anyhow!(e))?;
         ciphertext.splice(..0, nonce.iter().copied());
         Ok(ciphertext)
     }
@@ -66,9 +66,7 @@ impl TextDecryptor for Chacha20poly1305 {
         let (nonce, ciphertext) = buf.split_at(NonceSize::to_usize());
         let cipher = ChaCha20Poly1305::new(key);
         let nonce = Nonce::from_slice(nonce);
-        let plaintext = cipher
-            .decrypt(nonce, ciphertext)
-            .map_err(|e| anyhow::anyhow!(e))?;
+        let plaintext = cipher.decrypt(nonce, ciphertext).map_err(|e| anyhow!(e))?;
         Ok(plaintext)
     }
 }
