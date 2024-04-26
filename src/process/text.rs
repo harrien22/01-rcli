@@ -18,6 +18,14 @@ pub trait TextVerifier {
     fn verify(&self, reader: &mut dyn Read, sig: &[u8]) -> Result<bool>;
 }
 
+pub trait TextEncryptor {
+    fn encrypt(&self, reader: &mut dyn Read) -> Result<Vec<u8>>;
+}
+
+pub trait TextDecryptor {
+    fn decrypt(&self, reader: &mut dyn Read) -> Result<Vec<u8>>;
+}
+
 pub struct Blake3 {
     key: [u8; 32],
 }
@@ -34,8 +42,8 @@ pub struct Chacha20poly1305 {
     key: [u8; 32],
 }
 
-impl TextSigner for Chacha20poly1305 {
-    fn sign(&self, reader: &mut dyn Read) -> Result<Vec<u8>> {
+impl TextEncryptor for Chacha20poly1305 {
+    fn encrypt(&self, reader: &mut dyn Read) -> Result<Vec<u8>> {
         let mut buf = vec![];
         reader.read_to_end(&mut buf)?;
         let key = Key::from_slice(&self.key);
@@ -49,8 +57,8 @@ impl TextSigner for Chacha20poly1305 {
     }
 }
 
-impl TextVerifier for Chacha20poly1305 {
-    fn verify(&self, reader: &mut dyn Read, sig: &[u8]) -> Result<bool> {
+impl TextDecryptor for Chacha20poly1305 {
+    fn decrypt(&self, reader: &mut dyn Read) -> Result<Vec<u8>> {
         type NonceSize = <ChaCha20Poly1305 as AeadCore>::NonceSize;
         let mut buf = vec![];
         reader.read_to_end(&mut buf)?;
@@ -61,7 +69,7 @@ impl TextVerifier for Chacha20poly1305 {
         let plaintext = cipher
             .decrypt(nonce, ciphertext)
             .map_err(|e| anyhow::anyhow!(e))?;
-        Ok(plaintext == sig)
+        Ok(plaintext)
     }
 }
 
@@ -168,12 +176,12 @@ impl Chacha20poly1305 {
         Self { key }
     }
 
-    fn generate() -> Result<HashMap<&'static str, Vec<u8>>> {
-        let key = process_genpass(32, true, true, true, true)?;
-        let mut map = HashMap::new();
-        map.insert("chacha20poly1305.txt", key.as_bytes().to_vec());
-        Ok(map)
-    }
+    // fn generate() -> Result<HashMap<&'static str, Vec<u8>>> {
+    //     let key = process_genpass(32, true, true, true, true)?;
+    //     let mut map = HashMap::new();
+    //     map.insert("chacha20poly1305.txt", key.as_bytes().to_vec());
+    //     Ok(map)
+    // }
 }
 
 pub fn process_text_sign(
@@ -184,7 +192,6 @@ pub fn process_text_sign(
     let signer: Box<dyn TextSigner> = match format {
         TextSignFormat::Blake3 => Box::new(Blake3::try_new(key)?),
         TextSignFormat::Ed25519 => Box::new(Ed25519Signer::try_new(key)?),
-        TextSignFormat::ChaCha20Poly1305 => Box::new(Chacha20poly1305::try_new(key)?),
     };
 
     signer.sign(reader)
@@ -199,16 +206,24 @@ pub fn process_text_verify(
     let verifier: Box<dyn TextVerifier> = match format {
         TextSignFormat::Blake3 => Box::new(Blake3::try_new(key)?),
         TextSignFormat::Ed25519 => Box::new(Ed25519Verifier::try_new(key)?),
-        TextSignFormat::ChaCha20Poly1305 => Box::new(Chacha20poly1305::try_new(key)?),
     };
     verifier.verify(reader, sig)
+}
+
+pub fn process_text_encrypt(reader: &mut dyn Read, key: &[u8]) -> Result<Vec<u8>> {
+    let encryptor = Chacha20poly1305::try_new(key)?;
+    encryptor.encrypt(reader)
+}
+
+pub fn process_text_decrypt(reader: &mut dyn Read, key: &[u8]) -> Result<Vec<u8>> {
+    let decryptor = Chacha20poly1305::try_new(key)?;
+    decryptor.decrypt(reader)
 }
 
 pub fn process_text_key_generate(format: TextSignFormat) -> Result<HashMap<&'static str, Vec<u8>>> {
     match format {
         TextSignFormat::Blake3 => Blake3::generate(),
         TextSignFormat::Ed25519 => Ed25519Signer::generate(),
-        TextSignFormat::ChaCha20Poly1305 => Chacha20poly1305::generate(),
     }
 }
 
@@ -245,11 +260,11 @@ mod tests {
     #[test]
     fn test_process_text_chacha20poly1305() -> Result<()> {
         let mut reader = "hello world!".as_bytes();
-        let reader1 = "hello world!".as_bytes();
-        let format = TextSignFormat::ChaCha20Poly1305;
-        let sig = process_text_sign(&mut reader, KEY, format)?;
-        let ret = process_text_verify(&mut Cursor::new(sig), KEY, reader1, format)?;
-        assert!(ret);
+        let verify_str = "hello world!".as_bytes();
+        let encrypted = process_text_encrypt(&mut reader, KEY)?;
+        let decrypted = process_text_decrypt(&mut Cursor::new(encrypted), KEY)?;
+        let ret = String::from_utf8(decrypted)?;
+        assert_eq!(verify_str, ret.as_bytes());
         Ok(())
     }
 }

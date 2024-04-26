@@ -50,13 +50,11 @@ async fn file_handler(
         match tokio::fs::read_dir(&p).await {
             Ok(mut entries) => {
                 let mut listing_html = "<ul>".to_string();
-                // println!("{:?}", entries);
                 while let Ok(entry_result) = entries.next_entry().await {
-                    // println!("{:?}", entry_result);
                     if let Some(entry) = entry_result {
                         let file_name = entry.file_name().to_string_lossy().to_string();
-                        let mut relative_path = p.clone();
-                        relative_path.push(&file_name);
+                        let relative_path = entry.path();
+                        // println!("{:?}", relative_path);
                         let link = format!(
                             "<li><a href={}>{}</a></li>",
                             relative_path.display(),
@@ -71,12 +69,12 @@ async fn file_handler(
 
                 listing_html.push_str("</ul>");
                 Response::builder()
-                    .status(StatusCode::OK) // Or your appropriate status code
+                    .status(StatusCode::OK)
                     .header(
                         http::header::CONTENT_TYPE,
                         HeaderValue::from_static("text/html"),
                     )
-                    .body(listing_html) // Your HTML content string
+                    .body(listing_html)
                     .unwrap()
             }
             Err(e) => {

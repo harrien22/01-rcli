@@ -57,7 +57,10 @@ mod tests {
             aud: "device1".to_string(),
             exp: 10000000000,
         };
-        assert_eq!(jwt_encode(&claim).unwrap(), ("eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhY21lIiwiYXVkIjoiZGV2aWNlMSIsImV4cCI6MTAwMDAwMDAwMDB9.--P0fV9m9HvyGlr9n1kNOKEkYFMuzu8XRHxGhdjaj5g".to_owned()));
+        assert_eq!(
+            jwt_encode(&claim).unwrap(),
+            "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhY21lIiwiYXVkIjoiZGV2aWNlMSIsImV4cCI6MTAwMDAwMDAwMDB9.--P0fV9m9HvyGlr9n1kNOKEkYFMuzu8XRHxGhdjaj5g".to_owned()
+        );
         Ok(())
     }
 
@@ -68,7 +71,7 @@ mod tests {
         let decoded = jwt_decode(&mut reader)?;
         assert_eq!(
             decoded,
-            ("{\"sub\":\"acme\",\"aud\":\"device1\",\"exp\":10000000000}".to_owned())
+            "{\"sub\":\"acme\",\"aud\":\"device1\",\"exp\":10000000000}".to_owned()
         );
         Ok(())
     }
