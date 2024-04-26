@@ -37,9 +37,7 @@ pub fn jwt_decode(reader: &mut dyn Read) -> Result<String> {
         },
     };
     let token = token_data.claims;
-    // println!("{:?}", token);
     let token = serde_json::to_string(&token)?;
-    println!("{}", token);
     Ok(token)
 }
 
