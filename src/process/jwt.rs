@@ -22,7 +22,9 @@ pub fn jwt_decode(reader: &mut dyn Read) -> Result<String> {
     // avoid accidental newlines
     let buf = buf.trim();
     let mut validation = Validation::new(Algorithm::HS256);
-    validation.set_audience(&["device1"]);
+    // validation.set_audience(&["device1"]);
+    validation.validate_aud = false;
+    validation.validate_exp = true;
     let token_data = match decode::<JwtSignOpts>(
         buf,
         &DecodingKey::from_secret(b"secret".as_ref()),
